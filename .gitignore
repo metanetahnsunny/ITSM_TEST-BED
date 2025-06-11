@@ -1,6 +1,9 @@
 # SSH 키페어 파일
 ssh_key
+ssh_key.pem
 ssh_key.pub
+*.pem
+*.pub
 
 # 테라폼 관련 파일
 .terraform/
