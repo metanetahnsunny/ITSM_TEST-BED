@@ -67,7 +67,14 @@ resource "azurerm_subnet" "subnets" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = each.key
   address_prefixes     = [cidrsubnet(each.value, 8, 0)]
-  depends_on          = [azurerm_virtual_network.vnets]
+}
+
+# 관리 서브넷 추가 (vnet1에만)
+resource "azurerm_subnet" "mgmt_subnet" {
+  name                 = "subnet-mgmt"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = "vnet1"
+  address_prefixes     = ["10.1.1.0/24"]
 }
 
 # VNet 피어링
@@ -129,7 +136,7 @@ resource "azurerm_subnet_network_security_group_association" "nsg_association" {
   depends_on               = [azurerm_subnet.subnets, azurerm_network_security_group.nsg]
 }
 
-# 퍼블릭 IP
+# 퍼블릭 IP (기존 VM용)
 resource "azurerm_public_ip" "pip" {
   for_each            = var.vnet_address_spaces
   name                = "pip-${each.key}"
@@ -139,7 +146,26 @@ resource "azurerm_public_ip" "pip" {
   sku                = "Standard"
 }
 
-# 네트워크 인터페이스
+# 퍼블릭 IP (monitoring VM용)
+resource "azurerm_public_ip" "monitoring_pip" {
+  for_each            = var.vnet_address_spaces
+  name                = "pip-monitoring-${each.key}"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                = "Standard"
+}
+
+# 퍼블릭 IP (관리 VM용)
+resource "azurerm_public_ip" "mgmt_pip" {
+  name                = "pip-mgmt"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                = "Standard"
+}
+
+# 네트워크 인터페이스 (기존 VM용)
 resource "azurerm_network_interface" "nic" {
   for_each            = var.vnet_address_spaces
   name                = "nic-${each.key}"
@@ -155,7 +181,38 @@ resource "azurerm_network_interface" "nic" {
   depends_on = [azurerm_subnet.subnets, azurerm_public_ip.pip]
 }
 
-# 가상 머신
+# 네트워크 인터페이스 (monitoring VM용)
+resource "azurerm_network_interface" "monitoring_nic" {
+  for_each            = var.vnet_address_spaces
+  name                = "nic-monitoring-${each.key}"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnets[each.key].id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.monitoring_pip[each.key].id
+  }
+  depends_on = [azurerm_subnet.subnets, azurerm_public_ip.monitoring_pip]
+}
+
+# 네트워크 인터페이스 (관리 VM용)
+resource "azurerm_network_interface" "mgmt_nic" {
+  name                = "nic-mgmt"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.mgmt_subnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.mgmt_pip.id
+  }
+  depends_on = [azurerm_subnet.mgmt_subnet, azurerm_public_ip.mgmt_pip]
+}
+
+# 가상 머신 (기존 VM)
 resource "azurerm_linux_virtual_machine" "vm" {
   for_each            = var.vnet_address_spaces
   name                = "vm-${each.key}"
@@ -185,6 +242,69 @@ resource "azurerm_linux_virtual_machine" "vm" {
     version   = "latest"
   }
   depends_on = [azurerm_network_interface.nic, tls_private_key.ssh_key]
+}
+
+# 가상 머신 (monitoring VM)
+resource "azurerm_linux_virtual_machine" "monitoring_vm" {
+  for_each            = var.vnet_address_spaces
+  name                = "monitoring-vm-${each.key}"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = var.vm_size
+  admin_username      = var.admin_username
+
+  network_interface_ids = [
+    azurerm_network_interface.monitoring_nic[each.key].id
+  ]
+
+  admin_ssh_key {
+    username   = var.admin_username
+    public_key = tls_private_key.ssh_key.public_key_openssh
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+  depends_on = [azurerm_network_interface.monitoring_nic, tls_private_key.ssh_key]
+}
+
+# 가상 머신 (관리 VM)
+resource "azurerm_linux_virtual_machine" "mgmt_vm" {
+  name                = "mgmt-vm"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = "Standard_F2s_v2"  # 2 vCPU, 4GB RAM
+  admin_username      = var.admin_username
+
+  network_interface_ids = [
+    azurerm_network_interface.mgmt_nic.id
+  ]
+
+  admin_ssh_key {
+    username   = var.admin_username
+    public_key = tls_private_key.ssh_key.public_key_openssh
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+  depends_on = [azurerm_network_interface.mgmt_nic, tls_private_key.ssh_key]
 }
 
 # SSH 키 생성
