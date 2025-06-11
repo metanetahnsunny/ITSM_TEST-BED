@@ -316,7 +316,7 @@ resource "tls_private_key" "ssh_key" {
 # SSH 키 파일로 저장
 resource "local_file" "ssh_private_key" {
   content         = tls_private_key.ssh_key.private_key_pem
-  filename        = "${path.module}/ssh_key"
+  filename        = "${path.module}/ssh_key.pem"
   file_permission = "0600"
   depends_on      = [tls_private_key.ssh_key]
 }
