@@ -1,0 +1,16 @@
+# SSH 키페어 파일
+ssh_key
+ssh_key.pub
+
+# 테라폼 관련 파일
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc 
