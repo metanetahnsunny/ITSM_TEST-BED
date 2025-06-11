@@ -67,6 +67,7 @@ resource "azurerm_subnet" "subnets" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = each.key
   address_prefixes     = [cidrsubnet(each.value, 8, 0)]
+  depends_on          = [azurerm_virtual_network.vnets]
 }
 
 # 관리 서브넷 추가 (vnet1에만)
@@ -75,6 +76,7 @@ resource "azurerm_subnet" "mgmt_subnet" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = "vnet1"
   address_prefixes     = ["10.1.1.0/24"]
+  depends_on          = [azurerm_virtual_network.vnets]
 }
 
 # VNet 피어링
