@@ -283,7 +283,7 @@ resource "azurerm_linux_virtual_machine" "mgmt_vm" {
   name                = "mgmt-vm"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  size                = "Standard_F2s_v2"  # 2 vCPU, 4GB RAM
+  size                = "Standard_D2s_v3"  # 2 vCPU, 4GB RAM
   admin_username      = var.admin_username
 
   network_interface_ids = [
