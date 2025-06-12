@@ -130,12 +130,50 @@ resource "azurerm_network_security_group" "nsg" {
   }
 }
 
+# 관리 VM용 NSG
+resource "azurerm_network_security_group" "mgmt_nsg" {
+  name                = "nsg-mgmt"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  security_rule {
+    name                       = "AllowAllInbound"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowAllOutbound"
+    priority                   = 1002
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
 # 서브넷과 NSG 연결
 resource "azurerm_subnet_network_security_group_association" "nsg_association" {
   for_each                  = var.vnet_address_spaces
   subnet_id                 = azurerm_subnet.subnets[each.key].id
   network_security_group_id = azurerm_network_security_group.nsg[each.key].id
   depends_on               = [azurerm_subnet.subnets, azurerm_network_security_group.nsg]
+}
+
+# 관리 서브넷과 NSG 연결
+resource "azurerm_subnet_network_security_group_association" "mgmt_nsg_association" {
+  subnet_id                 = azurerm_subnet.mgmt_subnet.id
+  network_security_group_id = azurerm_network_security_group.mgmt_nsg.id
+  depends_on               = [azurerm_subnet.mgmt_subnet, azurerm_network_security_group.mgmt_nsg]
 }
 
 # 퍼블릭 IP (기존 VM용)
